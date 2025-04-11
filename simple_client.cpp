@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
 
     ret = connect(s, (sockaddr *)&addr, sizeof(addr));
     if (ret < 0) {
-        cout << "connect failed." << endl;
+        perror("Error connet");
     } else {
         // const char* normal_buf = "123\n";
         // const char* oob_buf = "abc";
