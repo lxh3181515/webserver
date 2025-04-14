@@ -50,6 +50,22 @@ int poll(struct pollfd* fds, nfds_t nfds, int timeout);
 - `nfds`：指定被监听事件集合`fds`的大小
 - `timeout`：指定poll的超时值
 
+poll支持的事件类型包含
+
+|事件|描述|是否作为输入|是否作为输出|
+|---|---|---|---|
+|POLLIN|数据（包括普通和优先数据）可读|√|√|
+|POLLRDNORM|普通数据可读|√|√|
+|POLLRDBADN|优先级带数据可读（Linux不支持）|√|√|
+|POLLPRI|高优先级数据可读，比如TCP带外数据|√|√|
+|POLLOUT|数据（包括普通和优先数据）可写|√|√|
+|POLLWRNORM|普通数据可读|√|√|
+|POLLWRBADN|优先级带数据可读|√|√|
+|POLLRDHUP|TCP连接被对方关闭，或者对方关闭了写操作，由GNU引入|√|√|
+|POLLERR|错误||√|
+|POLLHUP|挂起。比如管道的写端被关闭后，读端描述符将收到事件||√|
+|POLLNVAL|文件描述符没有被打开||√|
+
 ## epoll系列系统调用
 
 epoll是linux特有的I/O复用函数，它在实现上与select、poll有很大差异。
@@ -60,14 +76,14 @@ epoll把用户关心的文件描述符上的事件放在内核里的一个事件
 
 ```c++
 #include <sys/epoll.h>
-int epoll_create(int size); // size提示内核事件表需要多大
+int epoll_create(int size); // size提示内核事件表需要多大，从Linux2.6.8开始被忽略
 int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event);
 ```
 参数解释
 - `op`：指定操作类型，有以下3种：
-  - `EPOLL_CTL_ADD`，往事件表中注册fd上的事件
-  - `EPOLL_CTL_MOD`，修改fd上的注册事件
-  - `EPOLL_CTL_DEL`，删除fd上的注册事件
+  - `EPOLL_CTL_ADD`，往事件表中注册fd上的事件（增加文件描述符）
+  - `EPOLL_CTL_MOD`，修改fd上的注册事件（修改已存在文件描述符的事件）
+  - `EPOLL_CTL_DEL`，删除fd上的注册事件(删除文件描述符)
 - `event`：结构体成员包含
   - `events`：epoll事件。epoll支持的事件类型与poll基本相同。但epoll有两个额外事件类型——`EPOLLET`和`EPOLLONESHOT`，对于epoll的高效运作非常关键。
   - `data`：用户数据。一般是一个文件描述符。
@@ -91,4 +107,18 @@ epoll对文件描述符的操作有两种模式：电平触发（LT）和边沿�
 
 **EPOLLONESHOT事件**
 
+即便使用ET模式，一个socket上的某个事件还是可能被触发多次。我们期望一个socket连接在任何一时刻都只被一个线程处理。可以使用epoll的EPOLLONESHOT事件实现。
 
+对于注册了EPOLLONESHOT事件的文件描述符，最多触发一个可读、可写或者异常事件，且只触发一次。注册了EPOLLONESHOT事件的socket一旦被某个线程处理完毕，该线程应该立即重置这个socket上的EPOLLONESHOT事件，确保这个socket下一次可读时，EPOLLIN事件能被触发，让其他工作线程有机会处理这个socket。
+
+> 监听socket不能注册EPOLLONESHOT事件，否则应用程序只能处理一个客户连接！因为后续的客户连接请求将不再触发EPOLLIN事件。
+
+这样保证了连接的完整性，从而避免很多可能的竞态条件。
+
+## 三种I/O复用函数比较
+
+|系统调用|应用程序索引就绪文件描述符时间复杂度|最大支持文件描述符数|工作模式|内核实现和工作效率|
+|---|---|---|---|---|
+|select|O(n)|一般有最大限制|LT|轮询检测，时间复杂度O(n)|
+|poll|O(n)|65535（系统最大）|LT|轮询检测，O(n)|
+|epoll|O(1)|65535（系统最大）|支持ET高效模式|回调检测，O(1)|
