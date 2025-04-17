@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <cerrno>
 #include <fcntl.h>
+#include "ChatRoomTask.h"
+#include "ThreadPool.h"
 
 using namespace std;
 
@@ -24,41 +26,6 @@ using namespace std;
     } while (0)
 
 #define MAX_EVENT_NUM 1024
-#define MAX_BUF_SIZE 1024
-#define FD_LIMIT 65535
-
-void setNonBlock(int fd)
-{
-    int option = fcntl(fd, F_GETFL) | O_NONBLOCK;
-    fcntl(fd, F_SETFL, option);
-}
-
-void addfd(int efd, int fd, uint32_t events)
-{
-    epoll_event event;
-    event.events = events;
-    event.data.fd = fd;
-    int ret = epoll_ctl(efd, EPOLL_CTL_MOD, fd, &event);
-    if (ret == -1)
-    {
-        if (errno == ENOENT) // 文件描述符未注册
-        {
-            epoll_ctl(efd, EPOLL_CTL_ADD, fd, &event);
-            setNonBlock(fd);
-        }
-        else
-        {
-            ERROR_CHECK(ret, "Error epoll control");
-        }
-    }
-}
-
-struct client_data
-{
-    sockaddr_in addr;
-    char *send_buf = NULL;
-    char recv_buf[MAX_BUF_SIZE];
-};
 
 int main(int argc, char *argv[])
 {
@@ -90,9 +57,8 @@ int main(int argc, char *argv[])
     addfd(efd, s, EPOLLIN);
 
     epoll_event events[MAX_EVENT_NUM];
-    client_data *clients = new client_data[FD_LIMIT];
-    int client_sockets[5];
-    int client_cnt = 0;
+    ChatRoomTask::setup(s, efd);
+    ThreadPool<ChatRoomTask> pool;
 
     while (1)
     {
@@ -107,71 +73,42 @@ int main(int argc, char *argv[])
             {
                 sockaddr_in addr_client;
                 socklen_t addr_client_len = sizeof(addr_client);
-                int new_s = accept(fd, (sockaddr *)&addr_client, &addr_client_len);
-                if (client_cnt < 5)
+                int fd = accept(s, (sockaddr *)&addr_client, &addr_client_len);
+                if (ChatRoomTask::sm_client_num < MAX_CLIENT_NUM)
                 {
-                    client_data cli;
-                    cli.addr = addr_client;
-                    clients[new_s] = cli;
-                    client_sockets[client_cnt++] = new_s;
-                    addfd(efd, new_s, EPOLLIN | EPOLLRDHUP);
+                    ChatRoomTask::client_data data;
+                    data.addr = addr_client;
+                    data.send_buf = nullptr;
+                    ChatRoomTask::sm_clients.insert(std::pair<int, ChatRoomTask::client_data>(fd, data));
+                    ChatRoomTask::sm_client_num++;
+                    addfd(efd, fd, EPOLLIN | EPOLLRDHUP, true);
                     printf("a client came\n");
                 }
                 else
                 {
+                    for (auto iter = ChatRoomTask::sm_clients.begin(); iter != ChatRoomTask::sm_clients.end(); iter++)
+                    {
+                        printf("%d\n", iter->first);
+                    }
                     const char *reply = "too many clents\n";
-                    send(new_s, reply, strlen(reply), 0);
-                    close(new_s);
+                    send(fd, reply, strlen(reply), 0);
+                    close(fd);
                 }
             }
             else if (events[i].events & EPOLLRDHUP) // 客户端关闭连接
             {
-                int j;
-                for (j = 0; j < client_cnt; j++)
-                    if (fd == client_sockets[j])
-                        break;
-                client_sockets[j] = client_sockets[client_cnt - 1];
-                client_cnt--;
-                close(fd);
-                epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
-                printf("a client left\n");
+                ChatRoomTask task(TASK_CLOSE, fd);
+                pool.append(&task);
             }
             else if (events[i].events & EPOLLIN) // 接收客户端数据
             {
-                memset(clients[fd].recv_buf, '\0', sizeof(clients[fd].recv_buf));
-                int bytes_num = recv(fd, clients[fd].recv_buf, sizeof(clients[fd].recv_buf) - 1, 0);
-                ERROR_CHECK(bytes_num,
-                            "Error recv");
-                printf("get %d bytes of client data \"%s\" from %d\n", bytes_num, clients[fd].recv_buf, fd);
-                if (bytes_num < 0)
-                {
-                    if (errno != EAGAIN)
-                    {
-                        client_cnt--;
-                        close(fd);
-                        epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
-                    }
-                }
-                else if (bytes_num > 0)
-                {
-                    for (int j = 0; j < client_cnt; j++)
-                    {
-                        if (fd == client_sockets[j])
-                            continue;
-                        clients[client_sockets[j]].send_buf = clients[fd].recv_buf;
-                        addfd(efd, client_sockets[j], EPOLLOUT);
-                    }
-                }
+                ChatRoomTask task(TASK_RECV, fd);
+                pool.append(&task);
             }
             else if (events[i].events & EPOLLOUT) // 广播发送到其他客户端
             {
-                if (!clients[fd].send_buf)
-                {
-                    continue;
-                }
-                send(fd, clients[fd].send_buf, strlen(clients[fd].send_buf), 0);
-                clients[fd].send_buf = NULL;
-                addfd(efd, fd, EPOLLIN | EPOLLRDHUP);
+                ChatRoomTask task(TASK_SEND, fd);
+                pool.append(&task);
             }
             else
             {
@@ -180,7 +117,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    delete clients;
     close(s);
     close(efd);
     return 0;

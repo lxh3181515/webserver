@@ -30,10 +30,13 @@ void setNonBlock(int fd)
     fcntl(fd, F_SETFL, option);
 }
 
-void addfd(int efd, int fd, uint32_t events)
+void addfd(int efd, int fd, uint32_t events, bool oneshot=false)
 {
     epoll_event event;
-    event.events = events;
+    if (oneshot)
+        event.events = events | EPOLLONESHOT;
+    else 
+        event.events = events;
     event.data.fd = fd;
     ERROR_CHECK(epoll_ctl(efd, EPOLL_CTL_ADD, fd, &event),
                 "Error epoll control");
