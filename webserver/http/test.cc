@@ -1,7 +1,7 @@
 #include "HttpParser.h"
 #include <stdio.h>
 
-char buffer[2048] = "GET /contact_form.php HTTP/1.1\r\nHost: developer.mozilla.org\r\nContent-Length: 64\r\n\r\nname=Joe%20User&request=Send%20me%20one%20of%20your%20catalogue";
+char buffer[2048] = "DELETE /contact_form.php HTTP/1.1\r\nHost: developer.mozilla.org\r\nContent-Length: 64\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\nname=Joe%20User&request=Send%20me%20one%20of%20your%20catalogue";
 
 void print_http(HttpType http) {
     printf("request_line:\n");

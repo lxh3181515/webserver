@@ -10,6 +10,8 @@ int ChatRoomTask::sm_listen = -1;
 
 int ChatRoomTask::sm_epfd = -1;
 
+pthread_mutex_t ChatRoomTask::sm_mutex;
+
 void setNonBlock(int fd)
 {
     int option = fcntl(fd, F_GETFL) | O_NONBLOCK;
@@ -23,21 +25,34 @@ void addfd(int efd, int fd, uint32_t events, bool oneshot)
     if (oneshot)
         event.events |= EPOLLONESHOT;
     event.data.fd = fd;
+    int ret = epoll_ctl(efd, EPOLL_CTL_ADD, fd, &event);
+    setNonBlock(fd);
+    if (ret < 0)
+    {
+        perror("Error epoll control");
+    }
+}
+
+void modfd(int efd, int fd, uint32_t events, bool oneshot)
+{
+    epoll_event event;
+    event.events = events | EPOLLET;
+    if (oneshot)
+        event.events |= EPOLLONESHOT;
+    event.data.fd = fd;
     int ret = epoll_ctl(efd, EPOLL_CTL_MOD, fd, &event);
     if (ret == -1)
     {
-        if (errno == ENOENT) // 文件描述符未注册
-        {
-            epoll_ctl(efd, EPOLL_CTL_ADD, fd, &event);
-            setNonBlock(fd);
-        }
-        else
-        {
-            if (ret < 0)
-            {
-                perror("Error epoll control");
-            }
-        }
+        perror("Error epoll control");
+    }
+}
+
+void delfd(int efd, int fd)
+{
+    int ret = epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
+    if (ret == -1)
+    {
+        perror("Error epoll control");
     }
 }
 
@@ -48,12 +63,19 @@ ChatRoomTask::~ChatRoomTask() {
 void ChatRoomTask::setup(int listen, int epfd) {
     sm_listen = listen;
     sm_epfd = epfd;
+
+    if (pthread_mutex_init(&sm_mutex, nullptr) != 0) {
+        throw std::exception();
+    }
 }
 
 void ChatRoomTask::process() {
     /* 客户端关闭请求 */
     if (m_task == TASK_CLOSE)
     {
+        if (pthread_mutex_lock(&sm_mutex) != 0) {
+            throw std::exception();
+        }
         auto pos = sm_clients.find(m_fd);
         if (pos != sm_clients.end())
         {
@@ -62,13 +84,16 @@ void ChatRoomTask::process() {
         close(m_fd);
         sm_client_num--;
         epoll_ctl(sm_epfd, EPOLL_CTL_DEL, m_fd, NULL);
+        pthread_mutex_unlock(&sm_mutex);
         printf("a client left\n");
     }
 
     /* 接收数据 */
     else if (m_task == TASK_RECV)
     {
-        printf("in recv\n");
+        if (pthread_mutex_lock(&sm_mutex) != 0) {
+            throw std::exception();
+        }
         memset(sm_clients.at(m_fd).recv_buf, '\0', sizeof(sm_clients.at(m_fd).recv_buf));
         int bytes_num = recv(m_fd, sm_clients.at(m_fd).recv_buf, sizeof(sm_clients.at(m_fd).recv_buf) - 1, 0);
         if (bytes_num < 0)
@@ -79,7 +104,7 @@ void ChatRoomTask::process() {
             }
             sm_client_num--;
             close(m_fd);
-            epoll_ctl(sm_epfd, EPOLL_CTL_DEL, m_fd, NULL);
+            delfd(sm_epfd, m_fd);
             return;
         }
         else
@@ -90,23 +115,29 @@ void ChatRoomTask::process() {
                 if (m_fd == iter->first)
                     continue;
                 iter->second.send_buf = sm_clients.at(m_fd).recv_buf;
-                addfd(sm_epfd, iter->first, EPOLLOUT, true);
+                printf("in recv modify EPOLLOUT of fd:%d\n", iter->first);
+                modfd(sm_epfd, iter->first, EPOLLOUT, true);
             }
         }
-        addfd(sm_epfd, m_fd, EPOLLIN | EPOLLRDHUP, true); /* 重置ONESHOT */
+        printf("in recv modify EPOLLIN | EPOLLRDHUP of fd:%d\n", m_fd);
+        modfd(sm_epfd, m_fd, EPOLLIN | EPOLLRDHUP, true); /* 重置ONESHOT */
+        pthread_mutex_unlock(&sm_mutex);
     }
 
     /* 发送数据 */
     else if (m_task == TASK_SEND)
     {
-        printf("in send\n");
+        if (pthread_mutex_lock(&sm_mutex) != 0) {
+            throw std::exception();
+        }
         if (sm_clients.at(m_fd).send_buf)
         {
             send(m_fd, sm_clients.at(m_fd).send_buf, strlen(sm_clients.at(m_fd).send_buf), 0);
             sm_clients.at(m_fd).send_buf = nullptr;
-            printf("sended\n");
         }
-        addfd(sm_epfd, m_fd, EPOLLIN | EPOLLRDHUP, true);
+        printf("in send modify EPOLLIN | EPOLLRDHUP of fd:%d\n", m_fd);
+        modfd(sm_epfd, m_fd, EPOLLIN | EPOLLRDHUP, true);
+        pthread_mutex_unlock(&sm_mutex);
     }
 }
 

@@ -9,6 +9,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <map>
+#include <string>
 #include "HttpType.h"
 
 /* HTTP 1.1 */

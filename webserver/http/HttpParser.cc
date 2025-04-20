@@ -1,5 +1,16 @@
 #include "HttpParser.h"
 
+const std::map<std::string, HTTP_METHOD> str2method {
+    {"GET", HTTP_METHOD_GET},
+    {"POST", HTTP_METHOD_POST},
+    {"HEAD", HTTP_METHOD_HEAD},
+    {"PUT", HTTP_METHOD_PUT},
+    {"DELETE", HTTP_METHOD_DELETE},
+    {"TRACE", HTTP_METHOD_TRACE},
+    {"OPTIONS", HTTP_METHOD_OPTIONS},
+    {"CONNECT", HTTP_METHOD_CONNECT},
+    {"PATCH", HTTP_METHOD_PATCH}
+};
 
 void HttpParser::reset() {
     m_check_state = CHECK_STATE_REQUESTLINE;
@@ -66,10 +77,10 @@ HTTP_CODE HttpParser::parse_request_line(char *line)
     }
     *url++ = '\0';
 
-    char* method = line;
-    if (strcasecmp(method, "GET") == 0)
+    std::string method(line, (url - 1));
+    if (str2method.find(method) != str2method.end())
     {
-        m_http_info->_request_line._method = HTTP_METHOD_GET;
+        m_http_info->_request_line._method = str2method.at(method);
     }
     else
     {
@@ -117,37 +128,21 @@ HTTP_CODE HttpParser::parse_header(char *line)
         }
         return HTTP_CODE_GET_REQUEST;
     }
-    else if (strncasecmp(line, "Connection:", 11) == 0)
-    {
-        line[10] = '\0';
-        m_http_info->_headers[m_http_info->_header_num]._header_type = line;
-        line += 11;
-        line += strspn(line, " \t");
-        m_http_info->_headers[m_http_info->_header_num]._content = line;
-        m_http_info->_header_num++;
-    }
-    else if (strncasecmp(line, "Content-Length:", 15) == 0)
-    {
-        m_http_info->_headers[m_http_info->_header_num]._header_type = line;
-        line[14] = '\0';
-        line += 15;
-        line += strspn(line, " \t");
-        m_content_len = atol(line);
-        m_http_info->_headers[m_http_info->_header_num]._content = line;
-        m_http_info->_header_num++;
-    }
-    else if (strncasecmp(line, "Host:", 5) == 0)
-    {
-        m_http_info->_headers[m_http_info->_header_num]._header_type = line;
-        line[4] = '\0';
-        line += 5;
-        line += strspn(line, " \t");
-        m_http_info->_headers[m_http_info->_header_num]._content = line;
-        m_http_info->_header_num++;
-    }
     else
     {
-        printf("oop! unknow header $s\n", line);
+        char* colon = strpbrk(line, ":");
+        if (!colon)
+        {
+            return HTTP_CODE_BAD_REQUEST;
+        }
+        *colon = '\0';
+        m_http_info->_headers[m_http_info->_header_num]._header_type = line;
+        m_http_info->_headers[m_http_info->_header_num]._content = colon + 2;
+        m_http_info->_header_num++;
+        if (strcasecmp(line, "Content-Length") == 0)
+        {
+            m_content_len = atol(colon + 2);
+        }
     }
     return HTTP_CODE_NO_REQUEST;
 }
@@ -265,10 +260,12 @@ bool HttpParser::add_status_line(int status, const char* title) {
 
 bool HttpParser::add_headers() {
     for (int i = 0; i < m_http_info->_header_num; i++) {
-        add_response("%s: ", m_http_info->_headers[i]._header_type);
-        add_response("%s\r\n", m_http_info->_headers[i]._content);
+        if (!add_response("%s: ", m_http_info->_headers[i]._header_type))
+            return false;
+        if (!add_response("%s\r\n", m_http_info->_headers[i]._content))
+            return false;
     }
-    add_response("%s", "\r\n");
+    return add_response("%s", "\r\n");
 }
 
 bool HttpParser::add_content() {

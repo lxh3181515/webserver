@@ -131,7 +131,9 @@ void ThreadPool<T>::run() {
         if (!request) {
             continue;
         }
+        printf("tid %u do a task\n", (unsigned int)pthread_self());
         request->process();
+        delete request;
     }
 }
 

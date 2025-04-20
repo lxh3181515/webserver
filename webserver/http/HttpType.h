@@ -1,3 +1,6 @@
+#ifndef __WEBSERVER_HTTPTYPE_H
+#define __WEBSERVER_HTTPTYPE_H
+
 #define OK_200_TITLE "OK"
 #define ERROR_400_TITLE "Bad Request"
 #define ERROR_403_TITLE "Forbidden"
@@ -51,3 +54,5 @@ struct HttpType
     Header _headers[30];
     char* _content = nullptr;
 };
+
+#endif

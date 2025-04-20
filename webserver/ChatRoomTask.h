@@ -32,7 +32,7 @@ public:
     };
 
 public:
-    ChatRoomTask(int task, int fd=-1) : m_task(task), m_fd(fd){};
+    ChatRoomTask(int task, int fd) : m_task(task), m_fd(fd){};
 
     ~ChatRoomTask();
 
@@ -49,6 +49,8 @@ private:
     int m_task;
 
     int m_fd;
+
+    static pthread_mutex_t sm_mutex; /* 互斥锁 */
 
     static int sm_listen;
 

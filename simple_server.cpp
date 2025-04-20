@@ -73,42 +73,44 @@ int main(int argc, char *argv[])
             {
                 sockaddr_in addr_client;
                 socklen_t addr_client_len = sizeof(addr_client);
-                int fd = accept(s, (sockaddr *)&addr_client, &addr_client_len);
+                int new_fd = accept(s, (sockaddr *)&addr_client, &addr_client_len);
                 if (ChatRoomTask::sm_client_num < MAX_CLIENT_NUM)
                 {
                     ChatRoomTask::client_data data;
                     data.addr = addr_client;
                     data.send_buf = nullptr;
-                    ChatRoomTask::sm_clients.insert(std::pair<int, ChatRoomTask::client_data>(fd, data));
+                    ChatRoomTask::sm_clients.insert(std::pair<int, ChatRoomTask::client_data>(new_fd, data));
                     ChatRoomTask::sm_client_num++;
-                    addfd(efd, fd, EPOLLIN | EPOLLRDHUP, true);
+                    addfd(efd, new_fd, EPOLLIN | EPOLLRDHUP, true);
                     printf("a client came\n");
-                }
-                else
-                {
                     for (auto iter = ChatRoomTask::sm_clients.begin(); iter != ChatRoomTask::sm_clients.end(); iter++)
                     {
                         printf("%d\n", iter->first);
                     }
+                }
+                else
+                {
                     const char *reply = "too many clents\n";
-                    send(fd, reply, strlen(reply), 0);
-                    close(fd);
+                    send(new_fd, reply, strlen(reply), 0);
+                    close(new_fd);
                 }
             }
             else if (events[i].events & EPOLLRDHUP) // 客户端关闭连接
             {
-                ChatRoomTask task(TASK_CLOSE, fd);
-                pool.append(&task);
+                ChatRoomTask* task = new ChatRoomTask(TASK_CLOSE, fd);
+                pool.append(task);
             }
             else if (events[i].events & EPOLLIN) // 接收客户端数据
             {
-                ChatRoomTask task(TASK_RECV, fd);
-                pool.append(&task);
+                printf("detect a EPOLLIN event from %d\n", fd);
+                ChatRoomTask* task = new ChatRoomTask(TASK_RECV, fd);
+                pool.append(task);
             }
             else if (events[i].events & EPOLLOUT) // 广播发送到其他客户端
             {
-                ChatRoomTask task(TASK_SEND, fd);
-                pool.append(&task);
+                printf("detect a EPOLLOUT event from %d\n", fd);
+                ChatRoomTask* task = new ChatRoomTask(TASK_SEND, fd);
+                pool.append(task);
             }
             else
             {
