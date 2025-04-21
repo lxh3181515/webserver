@@ -1,7 +1,7 @@
 #ifndef __WEBSERVER_CHATROOMTASK_H
 #define __WEBSERVER_CHATROOMTASK_H
 
-#include "BaseTask.h"
+#include "threadpool/BaseRequest.h"
 #include <netinet/in.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -21,7 +21,7 @@
 #define TASK_RECV   2 /* 接收数据 */
 #define TASK_SEND   3 /* 发送数据 */
 
-class ChatRoomTask : BaseTask
+class ChatRoomTask : public BaseRequest
 {
 public:
     struct client_data
@@ -58,6 +58,7 @@ private:
 };
 
 void setNonBlock(int fd);
+
 void addfd(int efd, int fd, uint32_t events, bool oneshot=false);
 
 #endif

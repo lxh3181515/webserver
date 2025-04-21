@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include "ChatRoomTask.h"
 #include "ThreadPool.h"
+#include "EPoll.h"
 
 using namespace std;
 
@@ -52,41 +53,40 @@ int main(int argc, char *argv[])
     ERROR_CHECK(listen(s, 5),
                 "Error listen");
 
-    int efd = epoll_create(5);
-    ERROR_CHECK(efd, "Error create epoll");
-    addfd(efd, s, EPOLLIN);
-
-    epoll_event events[MAX_EVENT_NUM];
-    ChatRoomTask::setup(s, efd);
-    ThreadPool<ChatRoomTask> pool;
+    EPoll epoll;
+    std::shared_ptr<Channel> chan = std::make_shared<Channel>(s);
+    chan->setEevents(Channel::kConnEvent);
+    epoll.addChannel(chan);
+    ThreadPool pool;
 
     while (1)
     {
-        int event_num = epoll_wait(efd, events, MAX_EVENT_NUM, -1);
-        ERROR_CHECK(event_num,
-                    "Error epoll wait");
+        std::vector<std::shared_ptr<Channel>> channels;
 
-        for (int i = 0; i < event_num; i++)
+        channels = epoll.poll();
+
+        for (auto iter : channels)
         {
-            int fd = events[i].data.fd;
-            if ((fd == s) && (events[i].events & EPOLLIN)) // 连接请求
+            int fd = iter->getFd();
+            int events = iter->getEvents();
+            if ((fd == s) && (events & EPOLLIN)) // 连接请求
             {
                 sockaddr_in addr_client;
                 socklen_t addr_client_len = sizeof(addr_client);
-                int new_fd = accept(s, (sockaddr *)&addr_client, &addr_client_len);
+                int new_fd = accept(fd, (sockaddr *)&addr_client, &addr_client_len);
                 if (ChatRoomTask::sm_client_num < MAX_CLIENT_NUM)
                 {
+                    setNonBlock(new_fd);
+                    std::shared_ptr<Channel> chan = std::make_shared<Channel>(new_fd);
+                    chan->setEevents(Channel::kReadEvent);
+                    epoll.addChannel(chan);
+
                     ChatRoomTask::client_data data;
                     data.addr = addr_client;
                     data.send_buf = nullptr;
                     ChatRoomTask::sm_clients.insert(std::pair<int, ChatRoomTask::client_data>(new_fd, data));
                     ChatRoomTask::sm_client_num++;
-                    addfd(efd, new_fd, EPOLLIN | EPOLLRDHUP, true);
                     printf("a client came\n");
-                    for (auto iter = ChatRoomTask::sm_clients.begin(); iter != ChatRoomTask::sm_clients.end(); iter++)
-                    {
-                        printf("%d\n", iter->first);
-                    }
                 }
                 else
                 {
@@ -95,21 +95,21 @@ int main(int argc, char *argv[])
                     close(new_fd);
                 }
             }
-            else if (events[i].events & EPOLLRDHUP) // 客户端关闭连接
+            else if (events & EPOLLRDHUP) // 客户端关闭连接
             {
-                ChatRoomTask* task = new ChatRoomTask(TASK_CLOSE, fd);
+                BaseRequest* task = new ChatRoomTask(TASK_CLOSE, fd);
                 pool.append(task);
             }
-            else if (events[i].events & EPOLLIN) // 接收客户端数据
+            else if (events & EPOLLIN) // 接收客户端数据
             {
                 printf("detect a EPOLLIN event from %d\n", fd);
-                ChatRoomTask* task = new ChatRoomTask(TASK_RECV, fd);
+                BaseRequest* task = new ChatRoomTask(TASK_RECV, fd);
                 pool.append(task);
             }
-            else if (events[i].events & EPOLLOUT) // 广播发送到其他客户端
+            else if (events & EPOLLOUT) // 广播发送到其他客户端
             {
                 printf("detect a EPOLLOUT event from %d\n", fd);
-                ChatRoomTask* task = new ChatRoomTask(TASK_SEND, fd);
+                BaseRequest* task = new ChatRoomTask(TASK_SEND, fd);
                 pool.append(task);
             }
             else
@@ -120,6 +120,5 @@ int main(int argc, char *argv[])
     }
 
     close(s);
-    close(efd);
     return 0;
 }

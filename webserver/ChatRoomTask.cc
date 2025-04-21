@@ -12,49 +12,7 @@ int ChatRoomTask::sm_epfd = -1;
 
 pthread_mutex_t ChatRoomTask::sm_mutex;
 
-void setNonBlock(int fd)
-{
-    int option = fcntl(fd, F_GETFL) | O_NONBLOCK;
-    fcntl(fd, F_SETFL, option);
-}
 
-void addfd(int efd, int fd, uint32_t events, bool oneshot)
-{
-    epoll_event event;
-    event.events = events | EPOLLET;
-    if (oneshot)
-        event.events |= EPOLLONESHOT;
-    event.data.fd = fd;
-    int ret = epoll_ctl(efd, EPOLL_CTL_ADD, fd, &event);
-    setNonBlock(fd);
-    if (ret < 0)
-    {
-        perror("Error epoll control");
-    }
-}
-
-void modfd(int efd, int fd, uint32_t events, bool oneshot)
-{
-    epoll_event event;
-    event.events = events | EPOLLET;
-    if (oneshot)
-        event.events |= EPOLLONESHOT;
-    event.data.fd = fd;
-    int ret = epoll_ctl(efd, EPOLL_CTL_MOD, fd, &event);
-    if (ret == -1)
-    {
-        perror("Error epoll control");
-    }
-}
-
-void delfd(int efd, int fd)
-{
-    int ret = epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
-    if (ret == -1)
-    {
-        perror("Error epoll control");
-    }
-}
 
 ChatRoomTask::~ChatRoomTask() {
 
