@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include "sys/epoll.h"
 
 class Channel
 {
@@ -40,7 +41,7 @@ public:
 public:
     static const int kNoneEvent = 0;
 
-    static const int kReadEvent = EPOLLIN | EPOLLPRI;
+    static const int kReadEvent = EPOLLIN | EPOLLPRI | EPOLLRDHUP;
 
     static const int kWriteEvent = EPOLLOUT;
 

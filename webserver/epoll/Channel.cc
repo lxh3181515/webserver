@@ -1,12 +1,8 @@
-#include "Channel.h"
+#include "epoll/Channel.h"
 #include <sstream>
 #include <assert.h>
 #include <sys/epoll.h>
 
-
-const int Channel::kNoneEvent = 0;
-const int Channel::kReadEvent = EPOLLIN | EPOLLPRI;
-const int Channel::kWriteEvent = EPOLLOUT;
 
 Channel::Channel(int fd)
   : _fd(fd),
@@ -24,7 +20,6 @@ void Channel::handleEvent()
     {
         if (_closeCallback) _closeCallback();
     }
-
     if (_events & (EPOLLERR))
     {
         if (_errorCallback) _errorCallback();
@@ -36,5 +31,9 @@ void Channel::handleEvent()
     if (_events & EPOLLOUT)
     {
         if (_writeCallback) _writeCallback();
+    }
+    if (_events & EPOLLIN)
+    {
+        if (_connCallback) _connCallback();
     }
 }

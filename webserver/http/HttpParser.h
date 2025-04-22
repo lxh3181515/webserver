@@ -11,7 +11,7 @@
 #include <stdarg.h>
 #include <map>
 #include <string>
-#include "HttpType.h"
+#include "http/HttpType.h"
 
 /* HTTP 1.1 */
 class HttpParser {

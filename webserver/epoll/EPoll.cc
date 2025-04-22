@@ -1,11 +1,10 @@
-#include "EPoll.h"
+#include "epoll/EPoll.h"
 #include <assert.h>
 #include <unistd.h>
 
 EPoll::EPoll() {
     _epollfd = epoll_create1(EPOLL_CLOEXEC);
     assert(_epollfd > 0);
-    _events.resize(EVENTS_NUM);
 }
 
 EPoll::~EPoll() {
@@ -46,7 +45,7 @@ void EPoll::delChannel(std::shared_ptr<Channel> channel) {
 
 std::vector<std::shared_ptr<Channel>> EPoll::poll() {
     while (true) {
-        int event_count = epoll_wait(_epollfd, &*_events.begin(), _events.size(), -1);
+        int event_count = epoll_wait(_epollfd, _events, MAX_EVENTS_NUM, -1);
         if (event_count < 0) perror("epoll wait error");
         std::vector<std::shared_ptr<Channel>> req_data = getEventsRequest(event_count);
         if (req_data.size() > 0) return req_data;

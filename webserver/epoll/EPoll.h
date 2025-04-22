@@ -2,7 +2,8 @@
 #define __WEBSERVER_POLLER_H
 
 #include <sys/epoll.h>
-#include <Channel.h>
+#include "epoll/Channel.h"
+#include <vector>
 
 class EPoll
 {
@@ -22,14 +23,15 @@ public:
 
     std::vector<std::shared_ptr<Channel>> getEventsRequest(int events_num);
 
-private:
+public:
     static const int MAX_FD = 100000;
 
-    static const int EVENTS_NUM = 4096;
+    static const int MAX_EVENTS_NUM = 4096;
 
+private:
     int _epollfd;
 
-    std::vector<epoll_event> _events;
+    epoll_event _events[MAX_EVENTS_NUM];
     
     std::shared_ptr<Channel> _fd2chan[MAX_FD];
 };

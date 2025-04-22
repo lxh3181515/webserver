@@ -5,12 +5,12 @@
 #include <queue>
 #include <semaphore.h>
 #include <exception>
-#include <BaseRequest.h>
+#include "BaseRequest.h"
 
 class ThreadPool
 {
 public:
-    ThreadPool(int thread_num = 2, int max_requests = 10000);
+    ThreadPool(int thread_num = 4, int max_requests = 10000);
 
     ~ThreadPool();
 
