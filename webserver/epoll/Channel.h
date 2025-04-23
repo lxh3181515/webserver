@@ -9,7 +9,7 @@
 class Channel
 {
 public:
-    typedef std::function<void()> EventCallback;
+    typedef std::function<void(int)> EventCallback;
 
     Channel(int fd);
     
@@ -39,13 +39,13 @@ public:
     void setEevents(int evt) { _events = evt; }
 
 public:
-    static const int kNoneEvent = 0;
+    static const uint32_t kNoneEvent = 0;
 
-    static const int kReadEvent = EPOLLIN | EPOLLPRI | EPOLLRDHUP;
+    static const uint32_t kReadEvent = EPOLLIN | EPOLLRDHUP | EPOLLET | EPOLLONESHOT;
 
-    static const int kWriteEvent = EPOLLOUT;
+    static const uint32_t kWriteEvent = EPOLLOUT | EPOLLET | EPOLLONESHOT;
 
-    static const int kConnEvent = EPOLLIN;
+    static const uint32_t kConnEvent = EPOLLIN;
 
 private:
     const int  _fd;

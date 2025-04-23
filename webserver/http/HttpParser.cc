@@ -1,4 +1,4 @@
-#include "http/HttpParser.h"
+#include "HttpParser.h"
 
 const std::map<std::string, HTTP_METHOD> str2method {
     {"GET", HTTP_METHOD_GET},
@@ -67,17 +67,15 @@ HttpParser::LINE_STATE HttpParser::parse_line()
 
 HTTP_CODE HttpParser::parse_request_line(char *line)
 {
-    char* & url = m_http_info->_request_line._url;
-
     /* 获取请求 */
+    char* url;
     url = strpbrk(line, " \t");
     if (!url)
     {
         return HTTP_CODE_BAD_REQUEST;
     }
-    *url++ = '\0';
 
-    std::string method(line, (url - 1));
+    std::string method(line, url);
     if (str2method.find(method) != str2method.end())
     {
         m_http_info->_request_line._method = str2method.at(method);
@@ -105,6 +103,7 @@ HTTP_CODE HttpParser::parse_request_line(char *line)
     {
         return HTTP_CODE_BAD_REQUEST;
     }
+    m_http_info->_request_line._url = std::string(url, version);
 
     /* 获取版本号 */
     version += strspn(version, " \t"); /* 确保第一个字符非空格 */
@@ -121,7 +120,7 @@ HTTP_CODE HttpParser::parse_header(char *line)
 {
     if (line[0] == '\0') /* 读取空行 */
     {
-        if (m_content_len != 0)
+        if (m_http_info->_content_len != 0)
         {
             m_check_state = CHECK_STATE_CONTENT;
             return HTTP_CODE_NO_REQUEST;
@@ -135,13 +134,15 @@ HTTP_CODE HttpParser::parse_header(char *line)
         {
             return HTTP_CODE_BAD_REQUEST;
         }
-        *colon = '\0';
-        m_http_info->_headers[m_http_info->_header_num]._header_type = line;
-        m_http_info->_headers[m_http_info->_header_num]._content = colon + 2;
-        m_http_info->_header_num++;
-        if (strcasecmp(line, "Content-Length") == 0)
+        if (strncasecmp(line, "Content-Length", 14) == 0)
         {
-            m_content_len = atol(colon + 2);
+            m_http_info->_content_len = atol(colon + 2);
+        }
+        else {
+            Header h;
+            h._header_type = std::string(line, colon);
+            h._content = std::string(colon + 2);
+            m_http_info->_headers.push_back(h);
         }
     }
     return HTTP_CODE_NO_REQUEST;
@@ -149,9 +150,9 @@ HTTP_CODE HttpParser::parse_header(char *line)
 
 HTTP_CODE HttpParser::parse_content(char *line)
 {
-    if (m_read_buf_len >= (m_content_len + m_checked_idx))
+    if (m_read_buf_len >= (m_http_info->_content_len + m_checked_idx))
     {
-        line[m_content_len] = '\0';
+        line[m_http_info->_content_len-1] = '\0';
         m_http_info->_content = line;
         return HTTP_CODE_GET_REQUEST;
     }
@@ -169,7 +170,9 @@ HTTP_CODE HttpParser::process_read()
     {
         line = get_line();
         m_start_line = m_checked_idx;
-        printf("got 1 http line: %s\n", line);
+        if (strlen(line) != 0) {
+            printf("got 1 http line: %s\n", line);
+        }
 
         switch (m_check_state)
         {
@@ -215,21 +218,24 @@ HTTP_CODE HttpParser::process_read()
     return HTTP_CODE_NO_REQUEST;
 }
 
-bool HttpParser::bufferToHttp(char* buffer, int buf_len, HttpType* http_type) {
-    if (!http_type || !buffer || buf_len <= 0) {
+bool HttpParser::bufferToHttp(HttpType* http_type) {
+    if (!http_type || !http_type->_buffer || http_type->_buffer_len <= 0) {
         return false;
     }
-    m_read_buf = buffer;
-    m_read_buf_len = buf_len;
+    m_read_buf = http_type->_buffer;
+    m_read_buf_len = http_type->_buffer_len;
     m_http_info = http_type;
 
-    bool buffer_good = true;
-    m_http_info->_code = process_read();
-    if (m_http_info->_code != HTTP_CODE_GET_REQUEST) {
-        buffer_good = false;
+    HTTP_CODE code = process_read();
+
+    /* 后续还有数据可读 */
+    if (code == HTTP_CODE_NO_REQUEST) {
+        return false;
     }
+
+    m_http_info->_code = code;
     reset();
-    return buffer_good;
+    return code == HTTP_CODE_GET_REQUEST;
 }
 
 /* 
@@ -259,17 +265,25 @@ bool HttpParser::add_status_line(int status, const char* title) {
 }
 
 bool HttpParser::add_headers() {
-    for (int i = 0; i < m_http_info->_header_num; i++) {
-        if (!add_response("%s: ", m_http_info->_headers[i]._header_type))
+    for (int i = 0; i < m_http_info->_headers.size(); i++) {
+        if (!add_response("%s: ", m_http_info->_headers[i]._header_type.c_str()))
             return false;
-        if (!add_response("%s\r\n", m_http_info->_headers[i]._content))
+        if (!add_response("%s\r\n", m_http_info->_headers[i]._content.c_str()))
             return false;
     }
+    return true;
+}
+
+bool HttpParser::add_headers(const char* type, const char* content) {
+    return add_response("%s: %s\r\n", type, content);
+}
+
+bool HttpParser::add_blank_line() {
     return add_response("%s", "\r\n");
 }
 
-bool HttpParser::add_content() {
-    return add_response("%s", m_http_info->_content);
+bool HttpParser::add_content(const char* content) {
+    return add_response("%s", content);
 }
 
 bool HttpParser::process_write(HTTP_CODE ret) {
@@ -279,54 +293,41 @@ bool HttpParser::process_write(HTTP_CODE ret) {
     {
         add_status_line(500, ERROR_500_TITLE);
         add_headers();
-        if (!add_content()) {
-            return false;
-        }
+        add_headers("Content-Length", std::to_string(strlen(ERROR_500_FORM)).c_str());
+        add_blank_line();
+        add_content(ERROR_500_FORM);
         break;
     }
     case HTTP_CODE_BAD_REQUEST:
     {
         add_status_line(400, ERROR_400_TITLE);
         add_headers();
-        if (!add_content()) {
-            return false;
-        }
+        add_headers("Content-Length", std::to_string(strlen(ERROR_400_FORM)).c_str());
+        add_blank_line();
+        add_content(ERROR_400_FORM);
         break;
     }
     case HTTP_CODE_NO_RESOURCE:
     {
         add_status_line(404, ERROR_404_TITLE);
-        add_headers();
-        if (!add_content()) {
-            return false;
-        }
+        add_headers("Content-Length", std::to_string(strlen(ERROR_404_FORM)).c_str());
+        add_blank_line();
+        add_content(ERROR_404_FORM);
         break;
     }
     case HTTP_CODE_FORBIDDEN_REQUEST:
     {
         add_status_line(403, ERROR_403_TITLE);
         add_headers();
-        if (!add_content()) {
-            return false;
-        }
+        add_headers("Content-Length", std::to_string(strlen(ERROR_403_FORM)).c_str());
+        add_blank_line();
+        add_content(ERROR_403_FORM);
         break;
     }
     case HTTP_CODE_FILE_REQUEST:
     {
         add_status_line(200, OK_200_TITLE);
         add_headers();
-        if (!add_content()) {
-            return false;
-        }
-        break;
-    }
-    case HTTP_CODE_GET_REQUEST:
-    {
-        add_status_line(200, OK_200_TITLE);
-        add_headers();
-        if (!add_content()) {
-            return false;
-        }
         break;
     }
     default:
@@ -337,11 +338,12 @@ bool HttpParser::process_write(HTTP_CODE ret) {
     return true;
 }
 
-bool HttpParser::httpToBuffer(char* buffer, int max_buf_len, HttpType* http_type) {
-    m_write_buf = buffer;
+bool HttpParser::httpToBuffer(HttpType* http_type, int max_buf_len) {
+    m_write_buf = http_type->_buffer;
     m_write_buf_len = max_buf_len;
     m_http_info = http_type;
     bool ret = process_write(m_http_info->_code);
+    http_type->_buffer_len = m_write_idx;
     reset();
     return ret;
 }

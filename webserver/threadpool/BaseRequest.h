@@ -3,7 +3,7 @@
 
 class BaseRequest {
 public:
-    virtual ~BaseRequest();
+    virtual ~BaseRequest() {}
     virtual void process() = 0;
 };
 

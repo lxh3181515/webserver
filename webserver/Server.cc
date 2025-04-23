@@ -24,10 +24,10 @@ Server::Server(int port)
 
     std::shared_ptr<Channel> chan = std::make_shared<Channel>(_listener_fd);
     chan->setEevents(Channel::kConnEvent);
-    chan->setConnCallback(std::bind(&Server::handleConnection, this));
+    chan->setConnCallback(std::bind(&Server::handleConnection, this, std::placeholders::_1));
     _epoll->addChannel(chan);
 
-    // _threadpool = new ThreadPool(THREADPOOL_THREADS_NUM, THREADPOOL_MAX_REQUESTS);
+    _threadpool = new ThreadPool(THREADPOOL_THREADS_NUM, THREADPOOL_MAX_REQUESTS);
 }
 
 Server::~Server()
@@ -53,7 +53,7 @@ void Server::start() {
     }
 }
 
-void Server::handleConnection() {
+void Server::handleConnection(int fd) {
     sockaddr_in addr_client;
     socklen_t addr_client_len = sizeof(addr_client);
     int accept_fd = accept(_listener_fd, (sockaddr *)&addr_client, &addr_client_len);
@@ -73,6 +73,21 @@ void Server::handleConnection() {
 
     std::shared_ptr<Channel> chan = std::make_shared<Channel>(accept_fd);
     chan->setEevents(Channel::kReadEvent);
-    chan->setReadCallback(NULL);
+    chan->setReadCallback(std::bind(&Server::handleRead, this, std::placeholders::_1));
+    chan->setCloseCallback(std::bind(&Server::handleClose, this, std::placeholders::_1));
     _epoll->addChannel(chan);
+}
+
+void Server::handleRead(int fd) {
+    HttpRequest* req = new HttpRequest(fd);
+    _threadpool->append(req);
+}
+
+void Server::handleWrite(int fd) {
+    
+}
+
+void Server::handleClose(int fd) {
+    close(fd);
+    _epoll->delChannel(fd);
 }

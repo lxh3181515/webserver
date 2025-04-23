@@ -13,7 +13,7 @@ EPoll::~EPoll() {
 
 void EPoll::addChannel(std::shared_ptr<Channel> channel) {
     int fd = channel->getFd();
-    struct epoll_event event;
+    epoll_event event;
     event.data.fd = fd;
     event.events = channel->getEvents();
 
@@ -26,7 +26,7 @@ void EPoll::addChannel(std::shared_ptr<Channel> channel) {
 
 void EPoll::modChannel(std::shared_ptr<Channel> channel) {
     int fd = channel->getFd();
-    struct epoll_event event;
+    epoll_event event;
     event.data.fd = fd;
     event.events = channel->getEvents();
     if (epoll_ctl(_epollfd, EPOLL_CTL_MOD, fd, &event) < 0) {
@@ -37,6 +37,10 @@ void EPoll::modChannel(std::shared_ptr<Channel> channel) {
 
 void EPoll::delChannel(std::shared_ptr<Channel> channel) {
     int fd = channel->getFd();
+    delChannel(fd);
+}
+
+void EPoll::delChannel(int fd) {
     if (epoll_ctl(_epollfd, EPOLL_CTL_DEL, fd, NULL) < 0) {
         perror("epoll_del error");
     }

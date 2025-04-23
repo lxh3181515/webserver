@@ -18,6 +18,7 @@ public:
     void modChannel(std::shared_ptr<Channel> channel);
 
     void delChannel(std::shared_ptr<Channel> channel);
+    void delChannel(int fd);
 
     std::vector<std::shared_ptr<Channel>> poll();
 

@@ -11,7 +11,7 @@
 #include <stdarg.h>
 #include <map>
 #include <string>
-#include "http/HttpType.h"
+#include "HttpType.h"
 
 /* HTTP 1.1 */
 class HttpParser {
@@ -34,8 +34,8 @@ public:
     HttpParser() {}
     ~HttpParser() {}
 
-    bool bufferToHttp(char* buffer, int buf_len, HttpType* http_type);
-    bool httpToBuffer(char* buffer, int max_buf_len, HttpType* http_type);
+    bool bufferToHttp(HttpType* http_type);
+    bool httpToBuffer(HttpType* http_type, int max_buf_len);
 
 private:
     void reset();
@@ -52,8 +52,10 @@ private:
     /* process_write */
     bool add_response(const char* format, ...);
     bool add_status_line(int status, const char* title);
-    bool add_content();
+    bool add_blank_line();
+    bool add_content(const char* content);
     bool add_headers();
+    bool add_headers(const char* type, const char* content);
 
 private:
     /* 主状态机当前状态 */
