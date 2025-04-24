@@ -13,9 +13,14 @@ public:
 
     ~EPoll();
 
+    /* 禁止拷贝 */
+    EPoll(const EPoll&) = delete;
+    void operator=(const EPoll&) = delete;
+
     void addChannel(std::shared_ptr<Channel> channel);
 
     void modChannel(std::shared_ptr<Channel> channel);
+    void modChannel(int fd, uint32_t events);
 
     void delChannel(std::shared_ptr<Channel> channel);
     void delChannel(int fd);
@@ -35,6 +40,8 @@ private:
     epoll_event _events[MAX_EVENTS_NUM];
     
     std::shared_ptr<Channel> _fd2chan[MAX_FD];
+
+    pthread_mutex_t _mutex;
 };
 
 

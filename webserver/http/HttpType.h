@@ -10,7 +10,7 @@
 #define ERROR_404_TITLE "Not Found"
 #define ERROR_500_TITLE "Internal Error"
 
-#define ERROR_400_FORM "You do not have permission to get file from this server.\n"
+#define ERROR_400_FORM "Your reguest has bad syntax or is inherently impossible to satisfy.\n"
 #define ERROR_403_FORM "You do not have permission to get fle from this server.\n"
 #define ERROR_404_FORM "The requested file was not found on this server.\n"
 #define ERROR_500_FORM "There was an unusual problem serving the requested file.\n"

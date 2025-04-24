@@ -2,6 +2,7 @@
 
 const char* doc_root = "/home/lingxh";
 
+
 void HttpRequest::process() {
     HttpType http;
     http._code = HTTP_CODE_NO_REQUEST;
@@ -13,11 +14,14 @@ void HttpRequest::process() {
         _parser.bufferToHttp(&http);
     }
     if (http._code == HTTP_CODE_NO_REQUEST) {
+        /* 读取数据失败，关闭连接并返回 */
+        closeConn();
         return;
     }
 
     /* 数据解析 */
     HttpType response;
+    response._code = http._code;
     if (http._code == HTTP_CODE_GET_REQUEST) {
         response = doRequest(&http);
     }
@@ -26,7 +30,18 @@ void HttpRequest::process() {
     response._buffer = _write_buffer;
     if (_parser.httpToBuffer(&response, MAX_BUF_SIZE)) {
         _write_len = response._buffer_len;
-        write();
+        /* 根据写结果决定是否关闭连接 */
+        if (!write()) {
+            closeConn();
+        }
+        else {
+            /* 重置ONESHOT */
+            resetConn();
+        }
+    }
+    else {
+        printf("Warning: http to buffer failed.\n");
+        closeConn();
     }
 }
 
@@ -37,7 +52,7 @@ bool HttpRequest::read() {
     }
 
     int bytes_num = 0;
-    while (true)
+    while (1)
     {
         bytes_num = recv(_fd, _read_buffer + _read_len, MAX_BUF_SIZE - _read_len, 0);
         if (bytes_num < 0)
@@ -70,12 +85,15 @@ bool HttpRequest::write() {
     _iv[0].iov_base = _write_buffer;
     _iv[0].iov_len = _write_len;
 
-    while (true) {
+    while (1) {
         int ret = writev(_fd, _iv, _iv_count);
         if (ret < 0) {
-            if (errno == EAGAIN) {
-                return true;
-            }
+            // if (errno == EAGAIN) {
+            //     return true;
+            // }
+
+            /* 即使TCP写缓冲没有空间，也关闭连接 */
+            perror("write error");
             unmap();
             return false;
         }
@@ -155,4 +173,13 @@ HttpType HttpRequest::doRequest(const HttpType* request_http) {
     }while (false);
     
     return res;
+}
+
+void HttpRequest::closeConn() {
+    _channel_handler->delChannel(_fd);
+    close(_fd);
+}
+
+void HttpRequest::resetConn() {
+    _channel_handler->modChannel(_fd, Channel::kReadEvent);
 }

@@ -34,9 +34,11 @@ public:
 
     int getFd() const { return _fd; }
 
-    int getEvents() const { return _events; }
+    uint32_t getEvents() const { return _events; }
 
-    void setEevents(int evt) { _events = evt; }
+    void setEvents(uint32_t evt) { _events = evt; }
+
+    void setREvents(uint32_t evt) { _revents = evt; }
 
 public:
     static const uint32_t kNoneEvent = 0;
@@ -48,9 +50,11 @@ public:
     static const uint32_t kConnEvent = EPOLLIN;
 
 private:
-    const int  _fd;
+    const int _fd;
 
-    int        _events;
+    uint32_t _events;
+
+    uint32_t _revents; /* 实际触发的事件 */
 
     EventCallback _connCallback;
 

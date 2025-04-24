@@ -107,7 +107,7 @@ HTTP_CODE HttpParser::parse_request_line(char *line)
 
     /* 获取版本号 */
     version += strspn(version, " \t"); /* 确保第一个字符非空格 */
-    if (strcasecmp(version, "HTTP/1.1") != 0)
+    if (strcasecmp(version, "HTTP/1.0") != 0 && strcasecmp(version, "HTTP/1.1") != 0)
     {
         return HTTP_CODE_BAD_REQUEST;
     }
@@ -261,7 +261,7 @@ bool HttpParser::add_response(const char* format, ...) {
 }
 
 bool HttpParser::add_status_line(int status, const char* title) {
-    return add_response("%s %d %s\r\n", "HTTP/1.1", status, title);
+    return add_response("%s %d %s\r\n", "HTTP/1.0", status, title);
 }
 
 bool HttpParser::add_headers() {

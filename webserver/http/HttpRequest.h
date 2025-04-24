@@ -3,6 +3,7 @@
 
 #include "BaseRequest.h"
 #include "HttpParser.h"
+#include "EPoll.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -15,7 +16,7 @@
 class HttpRequest : public BaseRequest
 {
 public:
-    HttpRequest(int fd) : _fd(fd) {}
+    HttpRequest(int fd, EPoll* epoll) : _fd(fd), _channel_handler(epoll) {}
 
     ~HttpRequest() {}
 
@@ -27,6 +28,10 @@ private:
     bool write();
 
     void unmap();
+
+    void closeConn();
+
+    void resetConn();
 
     HttpType doRequest(const HttpType* http);
 
@@ -52,6 +57,8 @@ private:
     struct stat _file_stat;
 
     char* _file_addr = nullptr;
+
+    EPoll* _channel_handler;
 };
 
 #endif

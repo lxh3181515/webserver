@@ -23,7 +23,7 @@ Server::Server(int port)
     _epoll = new EPoll;
 
     std::shared_ptr<Channel> chan = std::make_shared<Channel>(_listener_fd);
-    chan->setEevents(Channel::kConnEvent);
+    chan->setEvents(Channel::kConnEvent);
     chan->setConnCallback(std::bind(&Server::handleConnection, this, std::placeholders::_1));
     _epoll->addChannel(chan);
 
@@ -57,7 +57,6 @@ void Server::handleConnection(int fd) {
     sockaddr_in addr_client;
     socklen_t addr_client_len = sizeof(addr_client);
     int accept_fd = accept(_listener_fd, (sockaddr *)&addr_client, &addr_client_len);
-    printf("Accept new socket %d.\n", accept_fd);
 
     /* 超过最大文件描述符限制数 */
     if (accept_fd >= _epoll->MAX_FD) {
@@ -71,16 +70,19 @@ void Server::handleConnection(int fd) {
         return;
     }
 
+    printf("Accept new socket %d.\n", accept_fd);
+
     std::shared_ptr<Channel> chan = std::make_shared<Channel>(accept_fd);
-    chan->setEevents(Channel::kReadEvent);
+    chan->setEvents(Channel::kReadEvent);
     chan->setReadCallback(std::bind(&Server::handleRead, this, std::placeholders::_1));
     chan->setCloseCallback(std::bind(&Server::handleClose, this, std::placeholders::_1));
     _epoll->addChannel(chan);
 }
 
 void Server::handleRead(int fd) {
-    HttpRequest* req = new HttpRequest(fd);
+    HttpRequest* req = new HttpRequest(fd, _epoll);
     _threadpool->append(req);
+    printf("a client send data.\n");
 }
 
 void Server::handleWrite(int fd) {
@@ -88,6 +90,7 @@ void Server::handleWrite(int fd) {
 }
 
 void Server::handleClose(int fd) {
-    close(fd);
     _epoll->delChannel(fd);
+    close(fd);
+    printf("a client left.\n");
 }
